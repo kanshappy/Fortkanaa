@@ -1,31 +1,43 @@
-name: Daily Fortnite Shop Post
+import os
+import requests
+import tweepy
 
-on:
-  schedule:
-    # Daily Fortnite reset 00:00 UTC (IST: 5:30 AM). Runs at 5:35 AM IST
-    - cron: '5 0 * * *'
-  workflow_dispatch: # Manual test button
+# 1. Keys from GitHub Secrets
+consumer_key = os.environ["X_API_KEY"]
+consumer_secret = os.environ["X_API_SECRET"]
+access_token = os.environ["X_ACCESS_TOKEN"]
+access_token_secret = os.environ["X_ACCESS_TOKEN_SECRET"]
+fn_key = os.environ["FN_API_KEY"]
 
-jobs:
-  run-shop-bot:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+# 2. Download Fortnite Shop Image
+shop_url = "https://fortnite-api.com/v2/shop"
+headers = {"Authorization": fn_key}
+res = requests.get(shop_url, headers=headers).json()
 
-      - name: Setup Python
-        uses: setup-python@v4
-        with:
-          python-version: '3.10'
+img_url = res["data"]["composite"]
+img_data = requests.get(img_url).content
 
-      - name: Install Libraries
-        run: pip install tweepy requests
+with open("shop.png", "wb") as f:
+    f.write(img_data)
 
-      - name: Run Script
-        env:
-          X_API_KEY: ${{ secrets.X_API_KEY }}
-          X_API_SECRET: ${{ secrets.X_API_SECRET }}
-          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
-          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
-          FN_API_KEY: ${{ secrets.FN_API_KEY }}
-        run: python bot.py
+# 3. Twitter Login
+auth = tweepy.OAuth1UserHandler(
+    consumer_key, consumer_secret, access_token, access_token_secret
+)
+api_v1 = tweepy.API(auth)
+client_v2 = tweepy.Client(
+    consumer_key=consumer_key,
+    consumer_secret=consumer_secret,
+    access_token=access_token,
+    access_token_secret=access_token_secret,
+)
+
+# 4. Upload & Tweet
+media = api_v1.media_upload("shop.png")
+
+caption = """Fortnite Item Shop Update! 🛒🔥
+
+#Fortnite #ItemShop #FortniteItemShop"""
+
+client_v2.create_tweet(text=caption, media_ids=[media.media_id])
+print("Successfully posted to X!")
