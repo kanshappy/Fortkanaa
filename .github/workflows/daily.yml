@@ -1,0 +1,31 @@
+name: Daily Fortnite Shop Post
+
+on:
+  schedule:
+    # Daily Fortnite reset 00:00 UTC (IST: 5:30 AM). Runs at 5:35 AM IST
+    - cron: '5 0 * * *'
+  workflow_dispatch: # Manual test button
+
+jobs:
+  run-shop-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Libraries
+        run: pip install tweepy requests
+
+      - name: Run Script
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+          FN_API_KEY: ${{ secrets.FN_API_KEY }}
+        run: python bot.py
