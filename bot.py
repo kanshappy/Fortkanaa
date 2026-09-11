@@ -14,11 +14,16 @@ shop_url = "https://fortnite-api.com/v2/shop"
 headers = {"Authorization": fn_key}
 res = requests.get(shop_url, headers=headers).json()
 
-img_url = res["data"]["composite"]
-img_data = requests.get(img_url).content
+# Composite image illana alternative render edukkum
+data = res.get("data", {})
+img_url = (
+    data.get("composite")
+    or "https://media.fortniteapi.io/images/shop/en/full_shop.png"
+)
 
+img_data = requests.get(img_url).content
 with open("shop.png", "wb") as f:
-    f.write(img_data)
+  f.write(img_data)
 
 # 3. Twitter Login
 auth = tweepy.OAuth1UserHandler(
