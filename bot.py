@@ -9,28 +9,58 @@ access_token = os.environ["X_ACCESS_TOKEN"].strip()
 access_token_secret = os.environ["X_ACCESS_TOKEN_SECRET"].strip()
 fn_key = os.environ.get("FN_API_KEY", "").strip()
 
-# 2. Download Real Store Composite Image
-url = "https://fortnite-api.com/v2/shop"
+# 2. Fetch Shop Data & Find Valid Image
 headers = {"Authorization": fn_key} if fn_key else {}
-res = requests.get(url, headers=headers).json()
+shop_res = requests.get("https://fortnite-api.com/v2/shop", headers=headers).json()
 
-# Extract direct composite image
 img_url = None
-if "data" in res and isinstance(res["data"], dict):
-    img_url = res["data"].get("composite")
 
-# Fallback direct high-res shop image
+# Case 1: Direct composite
+if "data" in shop_res:
+    data = shop_res["data"]
+    if isinstance(data, dict):
+        img_url = data.get("composite")
+        
+        # Case 2: Featured first item display asset / newDisplayAsset
+        if not img_url:
+            for section in ["featured", "daily"]:
+                entries = data.get(section, {}).get("entries", []) if isinstance(data.get(section), dict) else []
+                if entries:
+                    for entry in entries:
+                        new_asset = entry.get("newDisplayAsset", {})
+                        if new_asset and new_asset.get("materialInstances"):
+                            for inst in new_asset["materialInstances"]:
+                                images = inst.get("images", {})
+                                if images.get("Background"):
+                                    img_url = images["Background"]
+                                    break
+                        if not img_url and entry.get("items"):
+                            for itm in entry["items"]:
+                                img_url = itm.get("images", {}).get("featured") or itm.get("images", {}).get("icon")
+                                if img_url:
+                                    break
+                        if img_url:
+                            break
+                if img_url:
+                    break
+
+# Fallback clean direct high-res store render
 if not img_url:
-    img_url = "https://media.fortniteapi.io/images/shop/en/full_shop.png"
+    img_url = "https://bot.fnbr.co/shop.png"
 
-response = requests.get(img_url, headers={"User-Agent": "Mozilla/5.0"})
-if response.status_code == 200 and len(response.content) > 1000:
-    with open("shop.png", "wb") as f:
-        f.write(response.content)
-else:
-    raise Exception("Image download failed or invalid content size!")
+print(f"Downloading image from: {img_url}")
 
-# 3. Twitter Auth (OAuth 1.0a User Context for Media Upload)
+# Download binary image
+headers_img = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+}
+r = requests.get(img_url, headers=headers_img, stream=True)
+
+with open("shop.png", "wb") as f:
+    for chunk in r.iter_content(chunk_size=8192):
+        f.write(chunk)
+
+# 3. Twitter Auth (OAuth 1.0a for Media Upload)
 auth = tweepy.OAuth1UserHandler(
     consumer_key,
     consumer_secret,
@@ -39,10 +69,10 @@ auth = tweepy.OAuth1UserHandler(
 )
 api = tweepy.API(auth)
 
-# Upload media with explicit mime type
+# Upload media
 media = api.media_upload(filename="shop.png")
 
-# 4. Tweet Post via v2 Client
+# 4. Tweet Post via Twitter API v2
 client = tweepy.Client(
     consumer_key=consumer_key,
     consumer_secret=consumer_secret,
