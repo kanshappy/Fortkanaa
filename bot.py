@@ -56,7 +56,7 @@ img_resp = requests.get(img_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=
 with open("shop.png", "wb") as f:
     f.write(img_resp.content)
 
-# 3. Twitter API v1.1 Auth (Bypasses v2 billing credits)
+# 3. Twitter Auth (Media Upload)
 auth = tweepy.OAuth1UserHandler(
     consumer_key,
     consumer_secret,
@@ -64,26 +64,20 @@ auth = tweepy.OAuth1UserHandler(
     access_token_secret
 )
 api = tweepy.API(auth)
-
-# Upload media
 media = api.media_upload(filename="shop.png")
 print(f"Media uploaded! ID: {media.media_id}")
+
+# 4. Tweet Post via Twitter API v2
+client = tweepy.Client(
+    consumer_key=consumer_key,
+    consumer_secret=consumer_secret,
+    access_token=access_token,
+    access_token_secret=access_token_secret
+)
 
 caption = """Fortnite Item Shop Update! 🛒🔥
 
 #Fortnite #ItemShop #FortniteItemShop"""
 
-# 4. Post Tweet via API v1.1 fallback if v2 fails
-try:
-    client = tweepy.Client(
-        consumer_key=consumer_key,
-        consumer_secret=consumer_secret,
-        access_token=access_token,
-        access_token_secret=access_token_secret
-    )
-    client.create_tweet(text=caption, media_ids=[media.media_id])
-    print("Posted via Twitter v2 API!")
-except Exception as e:
-    print(f"v2 failed ({e}), falling back to v1.1 update_status...")
-    api.update_status(status=caption, media_ids=[media.media_id])
-    print("Posted via Twitter v1.1 API successfully!")
+client.create_tweet(text=caption, media_ids=[media.media_id])
+print("Successfully posted to X!")
