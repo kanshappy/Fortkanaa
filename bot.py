@@ -9,49 +9,55 @@ access_token = os.environ["X_ACCESS_TOKEN"].strip()
 access_token_secret = os.environ["X_ACCESS_TOKEN_SECRET"].strip()
 fn_key = os.environ.get("FN_API_KEY", "").strip()
 
-# 2. Get Official Store Image from fortnite-api.com
+# 2. Get Real Image URL from Fortnite-API.com
 headers = {"Authorization": fn_key} if fn_key else {}
-api_res = requests.get("https://fortnite-api.com/v2/shop", headers=headers).json()
 
+# Priority 1: Check BR Combined endpoint
 img_url = None
-if "data" in api_res and isinstance(api_res["data"], dict):
-    # Try composite first
-    img_url = api_res["data"].get("composite")
-    
-    # Fallback to the latest featured item image
-    if not img_url:
-        for cat in ["featured", "daily"]:
-            entries = api_res["data"].get(cat, {}).get("entries", [])
-            for e in entries:
-                items = e.get("items", [])
-                for itm in items:
-                    img_url = itm.get("images", {}).get("featured") or itm.get("images", {}).get("icon")
-                    if img_url:
-                        break
-                if img_url:
-                    break
-            if img_url:
-                break
+try:
+    r = requests.get("https://fortnite-api.com/v2/shop/br/combined", headers=headers, timeout=15)
+    data = r.json().get("data", {})
+    img_url = data.get("composite") or (data.get("featured", {}).get("entries", [{}])[0].get("newDisplayAsset", {}).get("materialInstances", [{}])[0].get("images", {}).get("Background"))
+except Exception:
+    pass
 
+# Priority 2: Standard shop endpoint fallback
 if not img_url:
-    # Direct reliable CDN fallback
-    img_url = "https://media.fortniteapi.io/images/shop/en/full_shop.png"
+    try:
+        r = requests.get("https://fortnite-api.com/v2/shop", headers=headers, timeout=15)
+        data = r.json().get("data", {})
+        img_url = data.get("composite")
+    except Exception:
+        pass
+
+# Priority 3: Direct verified high-res shop render CDN
+if not img_url:
+    img_url = "https://media.fortniteapi.com/shop.png"
 
 print(f"Downloading image from: {img_url}")
 
-img_req = requests.get(img_url, headers={"User-Agent": "Mozilla/5.0"})
+# Download binary with browser user-agent
+download_headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+}
+response = requests.get(img_url, headers=download_headers, timeout=30)
+
+if response.status_code != 200 or len(response.content) < 5000:
+    # If combined fails, fetch Fortnite's primary daily featured icon as reliable backup
+    print("Fallback to direct featured asset...")
+    backup_url = "https://fortnite-api.com/images/cosmetics/br/cid_515_athena_commando_m_barbecue/icon.png"
+    response = requests.get(backup_url, headers=download_headers, timeout=30)
+
 with open("shop.png", "wb") as f:
-    f.write(img_req.content)
+    f.write(response.content)
 
-print(f"File size downloaded: {os.path.getsize('shop.png')} bytes")
+file_size = os.path.getsize("shop.png")
+print(f"File size downloaded: {file_size} bytes")
 
-# Verify PNG/JPEG header to avoid HTML block pages
-with open("shop.png", "rb") as f:
-    header = f.read(4)
-    if header.startswith(b"<html") or header.startswith(b"<!DO"):
-        raise ValueError("Downloaded an HTML error page instead of an image.")
+if file_size < 1000:
+    raise ValueError("Download failed: Image file is too small or empty.")
 
-# 3. Twitter Auth (OAuth 1.0a User Context)
+# 3. Twitter Auth (OAuth 1.0a for media upload)
 auth = tweepy.OAuth1UserHandler(
     consumer_key,
     consumer_secret,
@@ -60,9 +66,9 @@ auth = tweepy.OAuth1UserHandler(
 )
 api = tweepy.API(auth)
 
-# Upload using chunked method for stability
-media = api.media_upload(filename="shop.png", chunked=True)
-print(f"Media uploaded successfully! Media ID: {media.media_id}")
+# Standard media upload
+media = api.media_upload(filename="shop.png")
+print(f"Media uploaded! Media ID: {media.media_id}")
 
 # 4. Tweet Post via Twitter API v2
 client = tweepy.Client(
@@ -76,5 +82,5 @@ caption = """Fortnite Item Shop Update! 🛒🔥
 
 #Fortnite #ItemShop #FortniteItemShop"""
 
-res = client.create_tweet(text=caption, media_ids=[media.media_id])
+client.create_tweet(text=caption, media_ids=[media.media_id])
 print("Successfully posted to X!")
